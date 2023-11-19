@@ -14,6 +14,18 @@
 #include "cartzip.h"
 #endif
 
+#if defined(SF2000)
+namespace std
+{
+	std::string to_string(int i)
+	{
+		char str[20];
+		snprintf(str, sizeof(str), "%d", i);
+		return str;
+	}
+}
+#endif
+
 using namespace std;
 
 CSimpleIniA settingsIni;
