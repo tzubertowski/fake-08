@@ -198,11 +198,19 @@ void Host::saveSettingsIni(){
 
     std::string iniPath = _logFilePrefix + "settings.ini";
 
+#if !defined(SF2000)
     FILE * file = freopen(iniPath.c_str(), "w", stderr);
+#else
+	FILE * file = fopen(iniPath.c_str(), "w");
+#endif
     if( file != NULL ) {
 		//Initialize data
+#if !defined(SF2000)
         fprintf(file, "%s", settingsIniStr.c_str());
 		
+#else
+		fwrite(settingsIniStr.c_str(), sizeof(char), settingsIniStr.size(), file);
+#endif
         fflush(file);
         
         fclose(file);
@@ -218,11 +226,18 @@ std::string Host::getCartDataFileContents(std::string cartDataKey) {
 }
 
 void Host::saveCartData(std::string cartDataKey, std::string contents) {
+#if !defined(SF2000)
     FILE * file = freopen(getCartDataFile(cartDataKey).c_str(), "w", stderr);
+#else
+	FILE * file = fopen(getCartDataFile(cartDataKey).c_str(), "w");
+#endif
     if( file != NULL ) {
 		//Initialize data
+#if !defined(SF2000)
         fprintf(file, "%s", contents.c_str());
-		
+#else
+		fwrite(contents.c_str(), sizeof(char), contents.size(), file);
+#endif
         fflush(file);
         
         fclose(file);
@@ -232,7 +247,11 @@ void Host::saveCartData(std::string cartDataKey, std::string contents) {
 size_t Host::getFileContents(std::string fileName, char* buffer) {
 	std::string absPath = _logFilePrefix + "cdata/" + fileName;
     //get_file_bin_contents(absPath, buffer, length);
+#if !defined(SF2000)
 	FILE * file = freopen(absPath.c_str(), "rb", stderr);
+#else
+	FILE * file = fopen(absPath.c_str(), "rb");
+#endif
     if( file != NULL ) {
 		//Initialize data
 		size_t len;
@@ -249,7 +268,11 @@ size_t Host::getFileContents(std::string fileName, char* buffer) {
 
 void Host::writeBufferToFile(std::string fileName, char* buffer, size_t length) {
 	std::string absPath = _logFilePrefix + "cdata/" + fileName;
+#if !defined(SF2000)
     FILE * file = freopen(absPath.c_str(), "w", stderr);
+#else
+	FILE * file = fopen(absPath.c_str(), "w");
+#endif
     if( file != NULL ) {
 		//Initialize data
 		fwrite(&length, sizeof(length), 1, file);
