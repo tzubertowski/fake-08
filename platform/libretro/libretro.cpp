@@ -3,6 +3,7 @@
 #include <array>
 
 #include "libretro.h"
+#include "libretro_core_options.h"
 
 #include "../../source/vm.h"
 #include "../../source/PicoRam.h"
@@ -38,11 +39,17 @@ int16_t audioBuffer[audioBufferSize];
 const int PicoScreenWidth = 128;
 const int PicoScreenHeight = 128;
 
-const int BytesPerPixel = 2;
+static int scale = 1;
+static int crop_h_left = 0;
+static int crop_h_right = 0;
+static int crop_v_top = 0;
+static int crop_v_bottom = 0;
 
 const size_t screenBufferSize = PicoScreenWidth*PicoScreenHeight;
-
 uint16_t screenBuffer[screenBufferSize];
+
+const size_t screenBufferSize2x = PicoScreenWidth*PicoScreenHeight*4;
+uint16_t screenBuffer2x[screenBufferSize2x];
 
 uint16_t _rgb565Colors[144];
 
@@ -64,21 +71,99 @@ static void frame_time_cb(retro_usec_t usec)
     frame_time = usec / 1000000.0;
 }
 
-#if defined(SF2000)
-static void check_variables(void)
+static void check_variables(bool startup)
 {
-   struct retro_variable var        = {0};
+    struct retro_variable var = {0};
+    int video_updated = 0;
 
-   var.key = "fake08_audio";
-   if (enviro_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+#if defined(SF2000)
+    var.key = "fake08_audio";
+    if (enviro_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+    {
+       if (!strcmp(var.value, "enabled"))
+          audio_enabled = true;
+       else
+          audio_enabled = false;
+    }
+#endif
+
+    var.key = "fake08_video_scale";
+    if (enviro_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+    {
+        int oldScale = scale;
+        int newScale = 0;
+        if (!strcmp(var.value, "1x")) {
+            newScale = 1;
+        }
+        else if (!strcmp(var.value, "2x")) {
+            newScale = 2;
+        }
+        if (newScale != 0 && newScale != oldScale)
+        {
+            scale = newScale;
+            video_updated = 2;
+        }
+    }
+
+
+    var.key = "fake08_crop_h_left";
+
+    if (enviro_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+    {
+        int newval = atoi(var.value);
+        if (newval != crop_h_left)
+        {
+            crop_h_left = newval;
+            video_updated = 1;
+        }
+    }
+
+    var.key = "fake08_crop_h_right";
+
+    if (enviro_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+    {
+        int newval = atoi(var.value);
+        if (newval != crop_h_right)
+        {
+            crop_h_right = newval;
+            video_updated = 1;
+        }
+    }
+
+    var.key = "fake08_crop_v_top";
+
+    if (enviro_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+    {
+        int newval = atoi(var.value);
+        if (newval != crop_v_top)
+        {
+            crop_v_top = newval;
+            video_updated = 1;
+        }
+    }
+
+    var.key = "fake08_crop_v_bottom";
+
+    if (enviro_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+    {
+        int newval = atoi(var.value);
+        if (newval != crop_v_bottom)
+        {
+            crop_v_bottom = newval;
+            video_updated = 1;
+        }
+    }
+
+    if (video_updated && !startup)
    {
-      if (!strcmp(var.value, "enabled"))
-         audio_enabled = true;
+      struct retro_system_av_info av_info;
+      retro_get_system_av_info(&av_info);
+      if (video_updated == 2)
+         enviro_cb(RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO, &av_info);
       else
-         audio_enabled = false;
+         enviro_cb(RETRO_ENVIRONMENT_SET_GEOMETRY, &av_info);
    }
 }
-#endif
 
 EXPORT void retro_set_environment(retro_environment_t cb)
 {
@@ -93,6 +178,8 @@ EXPORT void retro_set_environment(retro_environment_t cb)
 
     struct retro_frame_time_callback frame_cb = { frame_time_cb, 1000000 / 60 };
     enviro_cb(RETRO_ENVIRONMENT_SET_FRAME_TIME_CALLBACK, &frame_cb);
+
+    libretro_set_core_options(cb);
 }
 
 EXPORT void retro_set_video_refresh(retro_video_refresh_t cb) { video_cb = cb; }
@@ -181,7 +268,7 @@ EXPORT void retro_get_system_info(struct retro_system_info *info)
 {
     memset(info, 0, sizeof(*info));
     info->library_name = "fake-08";
-    info->library_version = "0.0.2.20"; //todo: get from build flags
+    info->library_version = "0.0.2.20a"; //todo: get from build flags
     info->valid_extensions = "p8|png";
     #ifdef _NEED_FULL_PATH_
     info->need_fullpath = true;
@@ -192,12 +279,14 @@ EXPORT void retro_get_system_info(struct retro_system_info *info)
 
 EXPORT void retro_get_system_av_info(struct retro_system_av_info *info)
 {
+    unsigned width  = (PicoScreenWidth - crop_h_left - crop_h_right) * scale;
+    unsigned height = (PicoScreenHeight - crop_v_top - crop_v_bottom) * scale;
     memset(info, 0, sizeof(*info));
-    info->geometry.base_width = PicoScreenWidth;
-    info->geometry.base_height = PicoScreenHeight;
-    info->geometry.max_width = PicoScreenWidth;
-    info->geometry.max_height = PicoScreenHeight;
-    info->geometry.aspect_ratio = 1.f;
+    info->geometry.base_width = width;
+    info->geometry.max_width = PicoScreenWidth * scale;
+    info->geometry.base_height = height;
+    info->geometry.max_height = PicoScreenHeight * scale;
+    info->geometry.aspect_ratio = 1.0f;
     info->timing.fps = 60.f;
     info->timing.sample_rate = 22050.f;
 
@@ -242,6 +331,11 @@ int flip = 0;
 
 EXPORT void retro_run()
 {
+ bool updated  = false;
+
+   if (enviro_cb(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &updated) && updated)
+      check_variables(false);
+
     //TODO: improve this so slower hardware can play 30fps games at full speed
     if (_vm->getTargetFps() == 60 || frame % 2 == 0)
     {
@@ -392,17 +486,44 @@ EXPORT void retro_run()
             flip = 0;
             break;
     }
-
     //TODO: handle rotation/flip/mirroring
-    for(int scry = 0; scry < PicoScreenHeight; scry++) {
-        for (int scrx = 0; scrx < PicoScreenWidth; scrx++) {
-            int picox = scrx / drawModeScaleX;
-            int picoy = scry / drawModeScaleY;
-            screenBuffer[scry*128+scrx] = _rgb565Colors[screenPaletteMap[getPixelNibble(picox, picoy, picoFb)]];
-        }
-    }
 
-    video_cb(&screenBuffer, PicoScreenWidth, PicoScreenHeight, PicoScreenWidth * BytesPerPixel);
+    unsigned width  = PicoScreenWidth;
+    unsigned height = PicoScreenHeight;
+    unsigned pitch  = width * sizeof(uint16_t);
+
+    width  -= (crop_h_left + crop_h_right);
+    height -= (crop_v_top + crop_v_bottom);
+    pitch  -= (crop_h_left + crop_h_right) * sizeof(uint16_t);
+
+    if (scale > 1) {
+        for(unsigned scry = 0; scry < height; scry++) {
+            for (unsigned scrx = 0; scrx < width; scrx++) {
+                int picox = (scrx + crop_h_left) / drawModeScaleX;
+                int picoy = (scry + crop_v_top) / drawModeScaleY;
+                uint16_t color = _rgb565Colors[screenPaletteMap[getPixelNibble(picox, picoy, picoFb)]];
+                
+                for (int y = 0; y < scale; y++) {
+                    for (int x = 0; x < scale; x++) {
+                        screenBuffer2x[(scry*scale+y)*width*scale+scrx*scale+x] = color;
+                    }
+                }
+            }
+        }
+
+        video_cb(&screenBuffer2x, width * scale, height * scale, pitch * scale);
+    }
+    else {
+        for(unsigned scry = 0; scry < height; scry++) {
+            for (unsigned scrx = 0; scrx < width; scrx++) {
+                int picox = (scrx + crop_h_left) / drawModeScaleX;
+                int picoy = (scry + crop_v_top) / drawModeScaleY;
+                screenBuffer[scry*width+scrx] = _rgb565Colors[screenPaletteMap[getPixelNibble(picox, picoy, picoFb)]];
+            }
+        }
+
+        video_cb(&screenBuffer, width, height, pitch);
+    }
 
     frame++;
 }
@@ -644,6 +765,8 @@ EXPORT void retro_cheat_set(unsigned index, bool enabled, const char *code)
 
 EXPORT bool retro_load_game(struct retro_game_info const *info)
 {
+    check_variables(true);
+
     if (!info) {
         _vm->QueueCartChange("__FAKE08-BIOS.p8");
         return true;
@@ -664,7 +787,7 @@ EXPORT bool retro_load_game(struct retro_game_info const *info)
     }
 
 #if defined(SF2000)
-	check_variables();
+	check_variables(false);
 #endif
 
     return true;
