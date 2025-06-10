@@ -51,7 +51,11 @@ Vm::Vm(
         _cartChangeQueued(false),
         _nextCartKey(""),
         _cartLoadError(""),
-        _cartdataKey("")
+        _cartdataKey(""),
+        _update_ref(LUA_NOREF),
+        _update60_ref(LUA_NOREF),
+        _draw_ref(LUA_NOREF),
+        _refs_cached(false)
 {
     _host = host;
 
@@ -90,6 +94,19 @@ Vm::Vm(
 }
 
 Vm::~Vm(){
+    // Clean up function references
+    if (_luaState) {
+        if (_update_ref != LUA_NOREF) {
+            luaL_unref(_luaState, LUA_REGISTRYINDEX, _update_ref);
+        }
+        if (_update60_ref != LUA_NOREF) {
+            luaL_unref(_luaState, LUA_REGISTRYINDEX, _update60_ref);
+        }
+        if (_draw_ref != LUA_NOREF) {
+            luaL_unref(_luaState, LUA_REGISTRYINDEX, _draw_ref);
+        }
+    }
+
     CloseCart();
 
     if (_cleanupDeps){
@@ -359,6 +376,29 @@ bool Vm::loadCart(Cart* cart) {
     }
     lua_pop(_luaState, 0);
 
+    // Cache function references for performance
+    _refs_cached = false;
+    if (_update_ref != LUA_NOREF) {
+        luaL_unref(_luaState, LUA_REGISTRYINDEX, _update_ref);
+    }
+    if (_update60_ref != LUA_NOREF) {
+        luaL_unref(_luaState, LUA_REGISTRYINDEX, _update60_ref);
+    }
+    if (_draw_ref != LUA_NOREF) {
+        luaL_unref(_luaState, LUA_REGISTRYINDEX, _draw_ref);
+    }
+    
+    lua_getglobal(_luaState, "_update");
+    _update_ref = luaL_ref(_luaState, LUA_REGISTRYINDEX);
+    
+    lua_getglobal(_luaState, "_update60");
+    _update60_ref = luaL_ref(_luaState, LUA_REGISTRYINDEX);
+    
+    lua_getglobal(_luaState, "_draw");
+    _draw_ref = luaL_ref(_luaState, LUA_REGISTRYINDEX);
+    
+    _refs_cached = true;
+
 
     //customize bios per host's requirements
     if (cart->FullCartPath == BiosCartName || cart->FullCartPath == SettingsCartName) {
@@ -564,42 +604,85 @@ void Vm::UpdateAndDraw() {
         lua_pop(_luaState, 0);
     }
     else{
-        // Push the _update function on the top of the lua stack
-        if (_targetFps == 60) {
-            lua_getglobal(_luaState, "_update60");
-            if (!lua_isfunction(_luaState, -1)) {
-                lua_getglobal(_luaState, "_update");
+        // Use cached function references for better performance
+        if (_refs_cached) {
+            // Call update function
+            if (_targetFps == 60) {
+                lua_rawgeti(_luaState, LUA_REGISTRYINDEX, _update60_ref);
+                if (!lua_isfunction(_luaState, -1)) {
+                    lua_pop(_luaState, 1);
+                    lua_rawgeti(_luaState, LUA_REGISTRYINDEX, _update_ref);
+                }
+            } else {
+                lua_rawgeti(_luaState, LUA_REGISTRYINDEX, _update_ref);
+                if (!lua_isfunction(_luaState, -1)) {
+                    lua_pop(_luaState, 1);
+                    lua_rawgeti(_luaState, LUA_REGISTRYINDEX, _update60_ref);
+                }
+            }
+
+            if (lua_isfunction(_luaState, -1)) {
+                if (lua_pcall(_luaState, 0, 0, 0)){
+                    _cartLoadError = lua_tostring(_luaState, -1);
+                    Logger_Write("Error: %s\n", lua_tostring(_luaState, -1));
+                    lua_pop(_luaState, 1);
+                    QueueCartChange(BiosCartName);
+                    return;
+                }
+            } else {
+                lua_pop(_luaState, 1);
+            }
+
+            // Call draw function
+            lua_rawgeti(_luaState, LUA_REGISTRYINDEX, _draw_ref);
+            if (lua_isfunction(_luaState, -1)) {
+                if (lua_pcall(_luaState, 0, 0, 0)){
+                    _cartLoadError = lua_tostring(_luaState, -1);
+                    Logger_Write("Error: %s\n", lua_tostring(_luaState, -1));
+                    lua_pop(_luaState, 1);
+                    QueueCartChange(BiosCartName);
+                    return;
+                }
+            } else {
+                lua_pop(_luaState, 1);
             }
         } else {
-            lua_getglobal(_luaState, "_update");
-            if (!lua_isfunction(_luaState, -1)) {
+            // Fallback to original string lookup method
+            if (_targetFps == 60) {
                 lua_getglobal(_luaState, "_update60");
+                if (!lua_isfunction(_luaState, -1)) {
+                    lua_getglobal(_luaState, "_update");
+                }
+            } else {
+                lua_getglobal(_luaState, "_update");
+                if (!lua_isfunction(_luaState, -1)) {
+                    lua_getglobal(_luaState, "_update60");
+                }
             }
-        }
 
-        if (lua_isfunction(_luaState, -1)) {
-            if (lua_pcall(_luaState, 0, 0, 0)){
-                _cartLoadError = lua_tostring(_luaState, -1);
-                Logger_Write("Error: %s\n", lua_tostring(_luaState, -1));
-                lua_pop(_luaState, 1);
-                QueueCartChange(BiosCartName);
-                return;
+            if (lua_isfunction(_luaState, -1)) {
+                if (lua_pcall(_luaState, 0, 0, 0)){
+                    _cartLoadError = lua_tostring(_luaState, -1);
+                    Logger_Write("Error: %s\n", lua_tostring(_luaState, -1));
+                    lua_pop(_luaState, 1);
+                    QueueCartChange(BiosCartName);
+                    return;
+                }
             }
-        }
-        //pop the update fuction off the stack now that we're done with it
-        lua_pop(_luaState, 0);
+            lua_pop(_luaState, 0);
 
-        lua_getglobal(_luaState, "_draw");
-        if (lua_isfunction(_luaState, -1)) {
-            if (lua_pcall(_luaState, 0, 0, 0)){
-                _cartLoadError = lua_tostring(_luaState, -1);
-                Logger_Write("Error: %s\n", lua_tostring(_luaState, -1));
-                lua_pop(_luaState, 1);
-                QueueCartChange(BiosCartName);
-                return;
+            lua_getglobal(_luaState, "_draw");
+            if (lua_isfunction(_luaState, -1)) {
+                if (lua_pcall(_luaState, 0, 0, 0)){
+                    _cartLoadError = lua_tostring(_luaState, -1);
+                    Logger_Write("Error: %s\n", lua_tostring(_luaState, -1));
+                    lua_pop(_luaState, 1);
+                    QueueCartChange(BiosCartName);
+                    return;
+                }
             }
+            lua_pop(_luaState, 0);
         }
-        lua_pop(_luaState, 0);
 
         if (_input->btnp(6)) {
             togglePauseMenu();

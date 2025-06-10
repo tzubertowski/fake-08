@@ -20,7 +20,7 @@ Audio::Audio(PicoRam* memory){
     _memory = memory;
     
 #ifdef ENABLE_AUDIO_OPTIMIZATIONS
-    AudioOptimizations::Initialize();
+    PerformanceOptimizations::Initialize();
 #endif
     
     resetAudioState();
@@ -244,6 +244,24 @@ void Audio::FillAudioBuffer(void *audioBuffer, size_t offset, size_t size){
 
     uint32_t *buffer = (uint32_t *)audioBuffer;
 
+#ifdef SF2000
+    // Simple but effective audio optimization for SF2000
+    // Compute samples but only every 4th sample to reduce computation
+    for (size_t i = 0; i < size; i += 4){
+        int32_t sample = 0;
+        for (int c = 0; c < 4; ++c) {
+            sample += this->getSampleForChannel(c);
+        }
+        if (sample > 0x7fff) sample = 0x7fff; else if (sample < -0x8000) sample = -0x8000;
+        
+        // Fill 4 samples with the same value for performance
+        uint32_t stereoSample = (sample<<16) | (sample & 0xffff);
+        for (int j = 0; j < 4 && (i + j) < size; ++j) {
+            buffer[i + j] = stereoSample;
+        }
+    }
+#else
+    // Original high-quality audio for other platforms
     for (size_t i = 0; i < size; ++i){
         int32_t sample = 0;
 
@@ -256,6 +274,7 @@ void Audio::FillAudioBuffer(void *audioBuffer, size_t offset, size_t size){
         //buffer is stereo, so just send the mono sample to both channels
         buffer[i] = (sample<<16) | (sample & 0xffff);
     }
+#endif
 }
 
 
@@ -266,6 +285,25 @@ void Audio::FillMonoAudioBuffer(void *audioBuffer, size_t offset, size_t size){
 
     int16_t *buffer = (int16_t *)audioBuffer;
 
+#ifdef SF2000
+    // Clean mono audio for SF2000 - proper quality with moderate optimization
+    for (size_t i = 0; i < size; ++i){
+        int32_t sample = 0;
+        
+        // Use all 4 channels for proper audio quality
+        for (int c = 0; c < 4; ++c) {
+            sample += this->getSampleForChannel(c);
+        }
+        
+        // Reasonable volume boost and clamp
+        sample = sample * 2;
+        if (sample > 0x7fff) sample = 0x7fff; 
+        else if (sample < -0x8000) sample = -0x8000;
+        
+        buffer[i] = sample;
+    }
+#else
+    // Original high-quality audio for other platforms
     for (size_t i = 0; i < size; ++i){
         int32_t sample = 0;
 
@@ -277,6 +315,7 @@ void Audio::FillMonoAudioBuffer(void *audioBuffer, size_t offset, size_t size){
 
         buffer[i] = sample;
     }
+#endif
 }
 
 static float key_to_freq(float key)
@@ -369,7 +408,7 @@ float Audio::getSampleForSfx(rawSfxChannel &channel, float freqShift) {
     // the real version uses a crossfade it looks like
     // 25 samples was estimated from looking at pcm out from pico-8
     float const fade_duration = offset_per_sample * 25;
-    float offset_part = fmod(channel.offset, 1.f);
+    float offset_part = fast_fmod(channel.offset, 1.f);
     float crossfade = 0;
     if (offset_part < fade_duration) {
       crossfade = (fade_duration-offset_part)/fade_duration;
@@ -443,7 +482,7 @@ float Audio::getSampleForNote(noteChannel &channel, rawSfxChannel &parentChannel
     // previous note effectively goes beyond offset fmod 1 when in crossfade
     float tmod= 0;
     if (forceRemainder) tmod = 1.0f;
-    tmod += fmod(offset, 1.f);
+    tmod += fast_fmod(offset, 1.f);
     // Apply effect, if any
     switch (fx)
     {
@@ -462,13 +501,13 @@ float Audio::getSampleForNote(noteChannel &channel, rawSfxChannel &parentChannel
         {
             // 7.5f and 0.25f were found empirically by matching
             // frequency graphs of PICO-8 instruments.
-            float t = fabs(fmod(7.5f * tmod / offset_per_second, 1.0f) - 0.5f) - 0.25f;
+            float t = fast_fabs(fast_fmod(7.5f * tmod / offset_per_second, 1.0f) - 0.5f) - 0.25f;
             // Vibrato half a semi-tone, so multiply by pow(2,1/12)
             freq = lerp(freq, freq * 1.059463094359f, t);
             break;
         }
         case FX_DROP:
-            freq *= 1.f - fmod(offset, 1.f);
+            freq *= 1.f - fast_fmod(offset, 1.f);
             break;
         case FX_FADE_IN:
             volume *= std::min(1.f, tmod);

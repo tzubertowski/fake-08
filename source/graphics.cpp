@@ -13,6 +13,7 @@ using namespace std;
 #include "nibblehelpers.h"
 #include "mathhelpers.h"
 #include "fontdata.h"
+#include "audioOptimizations.h"
 
 #include "stringToDataHelpers.h"
 
@@ -329,7 +330,7 @@ void Graphics::copyStretchSpriteToScreen(
 					int preShiftedCombinedPixIndex = (shiftedPixIndex / 2);
 					uint8_t bothPix = spr[preShiftedCombinedPixIndex];
 
-					uint8_t c = shiftedPixIndex % 2 == 0 
+					uint8_t c = FAST_MOD_2(shiftedPixIndex) == 0 
 						? bothPix & 0x0f //just first 4 bits
 						: bothPix >> 4;  //just last 4 bits
 
@@ -349,7 +350,7 @@ void Graphics::copyStretchSpriteToScreen(
 					int combinedPixIdx = shiftedPixIndex / 2;
 					uint8_t bothPix = spr[combinedPixIdx];
 
-					uint8_t c = (pixIndex >> 16) % 2 == 0 
+					uint8_t c = FAST_MOD_2(pixIndex >> 16) == 0 
 						? bothPix & 0x0f //just first 4 bits
 						: bothPix >> 4;  //just last 4 bits
 					
@@ -379,7 +380,7 @@ void Graphics::copyStretchSpriteToScreen(
 					int combinedPixIdx = (shiftedPixIndex / 2);
 					uint8_t bothPix = spr[combinedPixIdx];
 
-					uint8_t c = shiftedPixIndex % 2 == 0 
+					uint8_t c = FAST_MOD_2(shiftedPixIndex) == 0 
 						? bothPix & 0x0f //just first 4 bits
 						: bothPix >> 4;  //just last 4 bits
 
@@ -409,7 +410,7 @@ void Graphics::copyStretchSpriteToScreen(
 					int combinedPixIdx = (shiftedPixIndex / 2);
 					uint8_t bothPix = spr[combinedPixIdx];
 
-					uint8_t c = (pixIndex >> 16) % 2 == 0 
+					uint8_t c = FAST_MOD_2(pixIndex >> 16) == 0 
 						? bothPix & 0x0f //just first 4 bits
 						: bothPix >> 4;  //just last 4 bits
 
@@ -899,7 +900,7 @@ void Graphics::tline(int x0, int y0, int x1, int y1, fix32 mx, fix32 my, fix32 m
 		uint8_t sprite = mget(sx, sy);
         //uint8_t bits = fget(sprite);
 
-		int spr_x = (sprite % 16) * 8;
+		int spr_x = FAST_MOD_16(sprite) * 8;
 		int spr_y = (sprite / 16) * 8;
 
         // If found, draw pixel //todo layer param
@@ -1406,8 +1407,8 @@ std::tuple<int, int> Graphics::drawCharacterFromBytes(
 		for(int relDestX = 0; relDestX < charWidth * wFactor; relDestX++) {
 
 			bool on = BITMASK(relDestX / wFactor) & chBytes[relDestY / hFactor];
-			on &= hFactor == 1 || !evenPxOnly || (relDestY % 2 == 0);
-			on &= wFactor == 1 || !evenPxOnly || (relDestX % 2 == 0);
+			on &= hFactor == 1 || !evenPxOnly || (FAST_MOD_2(relDestY) == 0);
+			on &= wFactor == 1 || !evenPxOnly || (FAST_MOD_2(relDestX) == 0);
 
 			int absDestX = x + relDestX;
 			int absDestY = y + relDestY;
@@ -1441,7 +1442,7 @@ void Graphics::spr(
 	bool flip_x = false,
 	bool flip_y = false) 
 {
-	int spr_x = (n % 16) * 8;
+	int spr_x = FAST_MOD_16(n) * 8;
 	int spr_y = (n / 16) * 8;
 	int16_t spr_w = (int16_t)(w * (fix32)8);
 	int16_t spr_h = (int16_t)(h * (fix32)8);

@@ -54,6 +54,12 @@ class Vm {
 
     vector<string> _cartList;
 
+    // Cached Lua function references for performance
+    int _update_ref;
+    int _update60_ref;
+    int _draw_ref;
+    bool _refs_cached;
+
     bool loadCart(Cart* cart);
     void vm_reload(int destaddr, int sourceaddr, int len, Cart* cart);
 

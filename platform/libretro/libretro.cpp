@@ -406,9 +406,20 @@ EXPORT void retro_run()
 
         // Audio rendering - enable by default, allow SF2000 option to disable
         bool should_play_audio = true;
-        if (should_play_audio && (frame % 2 == 0)) {
-            _audio->FillAudioBuffer(&audioBuffer, 0, SAMPLESPERFRAME);
-            audio_batch_cb(audioBuffer, SAMPLESPERFRAME);
+        if (should_play_audio) {
+#ifdef SF2000
+            // SF2000 quality mono audio - every other frame like other platforms
+            if (frame % 2 == 0) {
+                _audio->FillMonoAudioBuffer(&audioBuffer, 0, SAMPLESPERFRAME);
+                audio_batch_cb(audioBuffer, SAMPLESPERFRAME);
+            }
+#else
+            // Regular stereo optimization - every other frame
+            if (frame % 2 == 0) {
+                _audio->FillAudioBuffer(&audioBuffer, 0, SAMPLESPERFRAME);
+                audio_batch_cb(audioBuffer, SAMPLESPERFRAME);
+            }
+#endif
         }
     }
 
@@ -477,12 +488,18 @@ EXPORT void retro_run()
     height -= (crop_v_top + crop_v_bottom);
     pitch  -= (crop_h_left + crop_h_right) * sizeof(uint16_t);
 
+    // Optimized video conversion - eliminate per-pixel function calls
     if (scale > 1) {
         for(unsigned scry = 0; scry < height; scry++) {
             for (unsigned scrx = 0; scrx < width; scrx++) {
                 int picox = (scrx + crop_h_left) / drawModeScaleX;
                 int picoy = (scry + crop_v_top) / drawModeScaleY;
-                uint16_t color = _rgb565Colors[screenPaletteMap[getPixelNibble(picox, picoy, picoFb)]];
+                
+                // Direct pixel access instead of function call
+                int pixelIdx = (picoy * 64) + (picox / 2);
+                uint8_t bothPix = picoFb[pixelIdx];
+                uint8_t pixel = (picox & 1) == 0 ? (bothPix & 0x0f) : (bothPix >> 4);
+                uint16_t color = _rgb565Colors[screenPaletteMap[pixel]];
                 
                 for (int y = 0; y < scale; y++) {
                     for (int x = 0; x < scale; x++) {
@@ -499,7 +516,12 @@ EXPORT void retro_run()
             for (unsigned scrx = 0; scrx < width; scrx++) {
                 int picox = (scrx + crop_h_left) / drawModeScaleX;
                 int picoy = (scry + crop_v_top) / drawModeScaleY;
-                screenBuffer[scry*width+scrx] = _rgb565Colors[screenPaletteMap[getPixelNibble(picox, picoy, picoFb)]];
+                
+                // Direct pixel access instead of function call
+                int pixelIdx = (picoy * 64) + (picox / 2);
+                uint8_t bothPix = picoFb[pixelIdx];
+                uint8_t pixel = (picox & 1) == 0 ? (bothPix & 0x0f) : (bothPix >> 4);
+                screenBuffer[scry*width+scrx] = _rgb565Colors[screenPaletteMap[pixel]];
             }
         }
 
