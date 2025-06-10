@@ -116,6 +116,19 @@ struct retro_core_option_definition option_defs_us[] = {
       },
       "0",
    },
+#if defined(SF2000)
+   {
+      "fake08_audio",
+      "Audio Output",
+      "Enable or disable audio output for SF2000 platform.",
+      {
+         { "disabled", NULL },
+         { "enabled",  NULL },
+         { NULL, NULL },
+      },
+      "enabled",
+   },
+#endif
    { NULL, NULL, NULL, {{0}}, NULL },
 };
 

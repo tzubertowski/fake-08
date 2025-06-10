@@ -58,10 +58,7 @@ PicoRam* _memory;
 Audio* _audio;
 Host* _host;
 
-#if defined(SF2000)
 bool audio_enabled = true;
-#endif
-
 double prev_frame_time = 0;
 double frame_time = 0;
 
@@ -76,16 +73,6 @@ static void check_variables(bool startup)
     struct retro_variable var = {0};
     int video_updated = 0;
 
-#if defined(SF2000)
-    var.key = "fake08_audio";
-    if (enviro_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
-    {
-       if (!strcmp(var.value, "enabled"))
-          audio_enabled = true;
-       else
-          audio_enabled = false;
-    }
-#endif
 
     var.key = "fake08_video_scale";
     if (enviro_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
@@ -417,18 +404,12 @@ EXPORT void retro_run()
         kHeld = currKHeld;
         kDown = currKDown;
 
-#if !defined(SF2000)
-        if (frame % 2 == 0) {
+        // Audio rendering - enable by default, allow SF2000 option to disable
+        bool should_play_audio = true;
+        if (should_play_audio && (frame % 2 == 0)) {
             _audio->FillAudioBuffer(&audioBuffer, 0, SAMPLESPERFRAME);
             audio_batch_cb(audioBuffer, SAMPLESPERFRAME);
         }
-#else
-// TODO: fix the slowdown!
-        if (audio_enabled && (frame % 2 == 0)) {
-            _audio->FillAudioBuffer(&audioBuffer, 0, SAMPLESPERFRAME);
-            audio_batch_cb(audioBuffer, SAMPLESPERFRAME);
-        }
-#endif
     }
 
     uint8_t* picoFb = _vm->GetPicoInteralFb();
@@ -786,9 +767,7 @@ EXPORT bool retro_load_game(struct retro_game_info const *info)
         _vm->QueueCartChange(info->path);
     }
 
-#if defined(SF2000)
 	check_variables(false);
-#endif
 
     return true;
 }

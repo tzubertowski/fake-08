@@ -2,6 +2,7 @@
 #include "synth.h"
 #include "hostVmShared.h"
 #include "mathhelpers.h"
+#include "audioOptimizations.h"
 
 #include <cstdint>
 #include <string>
@@ -17,6 +18,10 @@
 
 Audio::Audio(PicoRam* memory){
     _memory = memory;
+    
+#ifdef ENABLE_AUDIO_OPTIMIZATIONS
+    AudioOptimizations::Initialize();
+#endif
     
     resetAudioState();
 }
@@ -276,8 +281,12 @@ void Audio::FillMonoAudioBuffer(void *audioBuffer, size_t offset, size_t size){
 
 static float key_to_freq(float key)
 {
+#ifdef ENABLE_AUDIO_OPTIMIZATIONS
+    return key_to_freq_optimized(key);
+#else
     using std::exp2;
     return 440.f * exp2((key - 33.f) / 12.f);
+#endif
 }
 
 const float C2_FREQ = key_to_freq(24);

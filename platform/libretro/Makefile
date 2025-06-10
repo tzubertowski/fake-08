@@ -152,7 +152,7 @@ else ifeq ($(platform), sf2000)
    AR = $(MIPS)ar
    CFLAGS = -EL -march=mips32 -mtune=mips32 -msoft-float -G0 -mno-abicalls -fno-pic
    CFLAGS += -ffast-math -fomit-frame-pointer -ffunction-sections -fdata-sections
-   CFLAGS += -DSF2000
+   CFLAGS += -DSF2000 -DENABLE_AUDIO_OPTIMIZATIONS
    # -D_NEED_FULL_PATH_
    CXXFLAGS := $(CFLAGS)
    STATIC_LINKING = 1

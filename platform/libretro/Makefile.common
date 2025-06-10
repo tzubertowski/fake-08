@@ -60,6 +60,7 @@ SOURCES_CXX := $(CORE_DIR)/platform/libretro/libretro.cpp \
                 $(CORE_DIR)/libs/lodepng/lodepng.cpp \
                 \
                 $(CORE_DIR)/source/Audio.cpp \
+                $(CORE_DIR)/source/audioOptimizations.cpp \
                 $(CORE_DIR)/source/Input.cpp \
                 $(CORE_DIR)/source/cart.cpp \
                 $(CORE_DIR)/source/emojiconversion.cpp \
