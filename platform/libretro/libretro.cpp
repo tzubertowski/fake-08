@@ -59,7 +59,7 @@ Audio* _audio;
 Host* _host;
 
 #if defined(SF2000)
-bool audio_enabled = false;
+bool audio_enabled = true;
 #endif
 
 double prev_frame_time = 0;
