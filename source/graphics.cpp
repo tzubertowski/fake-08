@@ -866,6 +866,10 @@ void Graphics::tline(int x0, int y0, int x1, int y1, fix32 mx, fix32 my, fix32 m
 	applyCameraToPoint(&x0, &y0);
 	applyCameraToPoint(&x1, &y1);
 
+	// Pre-compute inverse ranges to avoid expensive divisions in inner loop
+	float inv_x_range = (x1 != x0) ? (1.0f / (x1 - x0)) : 0.0f;
+	float inv_y_range = (y1 != y0) ? (1.0f / (y1 - y0)) : 0.0f;
+
 	//determine whether x or y coordinates need to get incremented
 	bool xDifGreater = std::abs(x1 - x0) >= std::abs(y1 - y0);
 	int dx = xDifGreater ? x0 <= x1 ? 1 : -1 : 0;
@@ -927,14 +931,16 @@ void Graphics::tline(int x0, int y0, int x1, int y1, fix32 mx, fix32 my, fix32 m
             if (x == xend)
                 break;
             x += dx;
-            y = y0 + ((float)(x - x0) / (x1 - x0)) * (y1 - y0);
+            // Avoid expensive division in inner loop - critical for MIPS
+            y = y0 + ((float)(x - x0) * inv_x_range) * (y1 - y0);
         }
         else {
             if (y == yend)
                 break;
             y += dy;
 			if (! vertical) {
-            	x = x0 + ((float)(y - y0) / (y1 - y0)) * (x1 - x0);
+            	// Avoid expensive division in inner loop - critical for MIPS
+            	x = x0 + ((float)(y - y0) * inv_y_range) * (x1 - x0);
 			}
 		}
 	}

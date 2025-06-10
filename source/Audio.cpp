@@ -354,7 +354,12 @@ int16_t Audio::getMusicTickCount(){
 
 float Audio::getSampleForSfx(rawSfxChannel &channel, float freqShift) {
     using std::max;
+#ifdef SF2000
+    // Reduce audio quality for performance on SF2000 MIPS soft-FPU
+    int const samples_per_second = 11025; // Half rate for 2x performance
+#else
     int const samples_per_second = 22050;
+#endif
 
     if (channel.sfxId < 0 || channel.sfxId > 63) {
         //no (valid) sfx here. return silence
@@ -367,21 +372,29 @@ float Audio::getSampleForSfx(rawSfxChannel &channel, float freqShift) {
 
     // PICO-8 exports instruments as 22050 Hz WAV files with 183 samples
     // per speed unit per note, so this is how much we should advance
-    float const offset_per_second = 22050.0f / (183.0f * speed);
-    float const offset_per_sample = offset_per_second / samples_per_second;
+    // Pre-compute and avoid expensive divisions - critical for MIPS soft-FPU
+#ifdef SF2000
+    static const float inv_183_samples = 11025.0f / 183.0f; // Pre-computed for SF2000
+    static const float inv_samples_per_second = 1.0f / 11025.0f;
+#else  
+    static const float inv_183_samples = 22050.0f / 183.0f; // Pre-computed constant
+    static const float inv_samples_per_second = 1.0f / 22050.0f;
+#endif
+    float const offset_per_second = inv_183_samples / speed;
+    float const offset_per_sample = offset_per_second * inv_samples_per_second;
     float next_offset = channel.offset + offset_per_sample;
 
     // Handle SFX loops. From the documentation: “Looping is turned
     // off when the start index >= end index”.
     float const loop_range = float(sfx.loopRangeEnd - sfx.loopRangeStart);
     if (loop_range > 0.f && next_offset >= sfx.loopRangeStart && channel.can_loop) {
-        next_offset = fmod(next_offset - sfx.loopRangeStart, loop_range)
+        next_offset = fast_fmod(next_offset - sfx.loopRangeStart, loop_range)
                     + sfx.loopRangeStart;
     }
 
-    int const note_idx = (int)floor(channel.offset);
+    int const note_idx = fast_floor(channel.offset);
     channel.current_note.n=sfx.notes[note_idx];
-    int const next_note_idx = (int)floor(next_offset);
+    int const next_note_idx = fast_floor(next_offset);
 
 
 
@@ -465,7 +478,12 @@ float Audio::getSampleForSfx(rawSfxChannel &channel, float freqShift) {
 float Audio::getSampleForNote(noteChannel &channel, rawSfxChannel &parentChannel, rawSfxChannel *childChannel, note prev_note, float freqShift, bool forceRemainder) {
     using std::max;
     float offset = parentChannel.offset;
+#ifdef SF2000
+    // Reduce audio quality for performance on SF2000 MIPS soft-FPU
+    int const samples_per_second = 11025; // Half rate for 2x performance
+#else
     int const samples_per_second = 22050;
+#endif
     //TODO: apply effects
     int const fx = channel.n.getEffect();
     uint8_t key = channel.n.getKey();
@@ -476,7 +494,12 @@ float Audio::getSampleForNote(noteChannel &channel, rawSfxChannel &parentChannel
 
     // Speed must be 1—255 otherwise the SFX is invalid
     int const speed = max(1, (int)sfx.speed);
-    float const offset_per_second = 22050.0f / (183.0f * speed);
+#ifdef SF2000
+    static const float inv_183_samples_note = 11025.0f / 183.0f; // Pre-computed for SF2000
+#else
+    static const float inv_183_samples_note = 22050.0f / 183.0f; // Pre-computed
+#endif
+    float const offset_per_second = inv_183_samples_note / speed;
     int const note_idx = fast_floor(offset);
 
     // previous note effectively goes beyond offset fmod 1 when in crossfade
@@ -561,14 +584,23 @@ int16_t Audio::getSampleForChannel(int channel){
     using std::floor;
     using std::max;
 
+#ifdef SF2000
+    // Reduce audio quality for performance on SF2000 MIPS soft-FPU
+    int const samples_per_second = 11025; // Half rate for 2x performance
+#else
     int const samples_per_second = 22050;
+#endif
 
     int16_t sample = 0;
 
     // Advance music using the master channel
     if (channel == _audioState._musicChannel.master && _audioState._musicChannel.pattern != -1)
     {
-        float const offset_per_second = 22050.f / (183.f * _audioState._musicChannel.speed);
+#ifdef SF2000
+        float const offset_per_second = 11025.0f / (183.0f * _audioState._musicChannel.speed);
+#else
+        float const offset_per_second = 22050.0f / (183.0f * _audioState._musicChannel.speed);
+#endif
         float const offset_per_sample = offset_per_second / samples_per_second;
         _audioState._musicChannel.offset += offset_per_sample;
         _audioState._musicChannel.volume += _audioState._musicChannel.volume_step / samples_per_second;
