@@ -408,11 +408,9 @@ EXPORT void retro_run()
         bool should_play_audio = true;
         if (should_play_audio) {
 #ifdef SF2000
-            // SF2000 quality mono audio - every other frame like other platforms
-            if (frame % 2 == 0) {
-                _audio->FillMonoAudioBuffer(&audioBuffer, 0, SAMPLESPERFRAME);
-                audio_batch_cb(audioBuffer, SAMPLESPERFRAME);
-            }
+            // SF2000 - process audio every frame but with decimated samples
+            _audio->FillAudioBuffer(&audioBuffer, 0, SAMPLESPERFRAME);
+            audio_batch_cb(audioBuffer, SAMPLESPERFRAME);
 #else
             // Regular stereo optimization - every other frame
             if (frame % 2 == 0) {

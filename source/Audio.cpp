@@ -244,37 +244,25 @@ void Audio::FillAudioBuffer(void *audioBuffer, size_t offset, size_t size){
 
     uint32_t *buffer = (uint32_t *)audioBuffer;
 
-#ifdef SF2000
-    // Simple but effective audio optimization for SF2000
-    // Compute samples but only every 4th sample to reduce computation
-    for (size_t i = 0; i < size; i += 4){
-        int32_t sample = 0;
-        for (int c = 0; c < 4; ++c) {
-            sample += this->getSampleForChannel(c);
-        }
-        if (sample > 0x7fff) sample = 0x7fff; else if (sample < -0x8000) sample = -0x8000;
-        
-        // Fill 4 samples with the same value for performance
-        uint32_t stereoSample = (sample<<16) | (sample & 0xffff);
-        for (int j = 0; j < 4 && (i + j) < size; ++j) {
-            buffer[i + j] = stereoSample;
-        }
-    }
-#else
-    // Original high-quality audio for other platforms
     for (size_t i = 0; i < size; ++i){
         int32_t sample = 0;
 
+#ifdef SF2000
+        // Process only 3 channels instead of 4 for better performance
+        for (int c = 0; c < 3; ++c) {
+            sample += this->getSampleForChannel(c);
+        }
+#else
         for (int c = 0; c < 4; ++c) {
             sample += this->getSampleForChannel(c);
         }
+#endif
 
 	    if (sample > 0x7fff) sample = 0x7fff; else if (sample < -0x8000) sample = -0x8000;
 
         //buffer is stereo, so just send the mono sample to both channels
         buffer[i] = (sample<<16) | (sample & 0xffff);
     }
-#endif
 }
 
 
