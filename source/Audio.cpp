@@ -139,7 +139,7 @@ void Audio::api_music(int pattern, int16_t fade_len, int16_t mask){
     {
         // Music will stop when fade out is finished
         _audioState._musicChannel.volume_step = fade_len <= 0 ? -FLT_MAX
-                                  : -_audioState._musicChannel.volume * (1000.f / fade_len);
+                                  : -_audioState._musicChannel.volume * (1000.0f / fade_len);
         return;
     }
 
@@ -151,7 +151,7 @@ void Audio::api_music(int pattern, int16_t fade_len, int16_t mask){
     if (fade_len > 0)
     {
         _audioState._musicChannel.volume = 0.f;
-        _audioState._musicChannel.volume_step = 1000.f / fade_len;
+        _audioState._musicChannel.volume_step = 1000.0f / fade_len;
     }
 
     set_music_pattern(pattern);
@@ -367,7 +367,7 @@ float Audio::getSampleForSfx(rawSfxChannel &channel, float freqShift) {
 
     // PICO-8 exports instruments as 22050 Hz WAV files with 183 samples
     // per speed unit per note, so this is how much we should advance
-    float const offset_per_second = 22050.f / (183.f * speed);
+    float const offset_per_second = 22050.0f / (183.0f * speed);
     float const offset_per_sample = offset_per_second / samples_per_second;
     float next_offset = channel.offset + offset_per_sample;
 
@@ -469,15 +469,15 @@ float Audio::getSampleForNote(noteChannel &channel, rawSfxChannel &parentChannel
     //TODO: apply effects
     int const fx = channel.n.getEffect();
     uint8_t key = channel.n.getKey();
-    float volume = channel.n.getVolume() / 7.f;
+    float volume = fast_div7(channel.n.getVolume());
     float freq = key_to_freq(key);
 
     struct sfx const &sfx = _memory->sfx[parentChannel.sfxId];
 
     // Speed must be 1—255 otherwise the SFX is invalid
     int const speed = max(1, (int)sfx.speed);
-    float const offset_per_second = 22050.f / (183.f * speed);
-    int const note_idx = (int)floor(offset);
+    float const offset_per_second = 22050.0f / (183.0f * speed);
+    int const note_idx = fast_floor(offset);
 
     // previous note effectively goes beyond offset fmod 1 when in crossfade
     float tmod= 0;
@@ -494,26 +494,26 @@ float Audio::getSampleForNote(noteChannel &channel, rawSfxChannel &parentChannel
             // but it’s actually _from_ the _prev_ note and volume.
             freq = lerp(key_to_freq(prev_note.getKey()), freq, tmod);
             if (prev_note.getVolume() > 0)
-                volume = lerp(prev_note.getVolume() / 7.0f, volume, tmod);
+                volume = lerp(fast_div7(prev_note.getVolume()), volume, tmod);
             break;
         }
         case FX_VIBRATO:
         {
-            // 7.5f and 0.25f were found empirically by matching
-            // frequency graphs of PICO-8 instruments.
-            float t = fast_fabs(fast_fmod(7.5f * tmod / offset_per_second, 1.0f) - 0.5f) - 0.25f;
+            // Use sine lookup for smooth vibrato instead of complex fabs/fmod pattern
+            float vibrato_phase = fast_fmod(7.5f * tmod / offset_per_second, 1.0f);
+            float t = fast_sine(vibrato_phase) * 0.25f; // Scale to match original range
             // Vibrato half a semi-tone, so multiply by pow(2,1/12)
             freq = lerp(freq, freq * 1.059463094359f, t);
             break;
         }
         case FX_DROP:
-            freq *= 1.f - fast_fmod(offset, 1.f);
+            freq *= 1.0f - fast_fmod(offset, 1.0f);
             break;
         case FX_FADE_IN:
-            volume *= std::min(1.f, tmod);
+            volume *= fast_min(1.0f, tmod);
             break;
         case FX_FADE_OUT:
-            volume *= max(0.0f, 1.f - tmod);
+            volume *= fast_max(0.0f, 1.0f - tmod);
             break;
         case FX_ARP_FAST:
         case FX_ARP_SLOW:

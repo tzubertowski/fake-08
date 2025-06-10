@@ -3,6 +3,7 @@
 
 #include "hostVmShared.h"
 #include "nibblehelpers.h"
+#include "audioOptimizations.h"
 
 
 
@@ -20,14 +21,15 @@ int isValidSprIdx(int x, int y){
 //try look up table to optimize?
 
 void setPixelNibble(const int x, const int y, uint8_t value, uint8_t* targetBuffer) {
-	//potentially slightly optimized by inlining - don't have measurements to back it up
-	targetBuffer[COMBINED_IDX(x, y)] = (BITMASK(0) & x)
-		? (targetBuffer[COMBINED_IDX(x, y)] & 0x0f) | (value << 4 & 0xf0)
-		: (targetBuffer[COMBINED_IDX(x, y)] & 0xf0) | (value & 0x0f);
+	// Simple optimized version without lookup tables  
+	int idx = COMBINED_IDX(x, y);
+	targetBuffer[idx] = (x & 1)
+		? (targetBuffer[idx] & 0x0f) | (value << 4)
+		: (targetBuffer[idx] & 0xf0) | (value & 0x0f);
 }
 
 uint8_t getPixelNibble(const int x, const int y, const uint8_t* targetBuffer) {
-	return (BITMASK(0) & x) 
-		? targetBuffer[COMBINED_IDX(x, y)] >> 4  //just last 4 bits
-		: targetBuffer[COMBINED_IDX(x, y)] & 0x0f; //just first 4 bits
+	// Simple optimized version without lookup tables
+	uint8_t byte = targetBuffer[COMBINED_IDX(x, y)];
+	return (x & 1) ? (byte >> 4) : (byte & 0x0f);
 }

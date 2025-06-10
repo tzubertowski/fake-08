@@ -44,24 +44,27 @@ float synth::waveform(int instrument, float advance)
     switch (instrument)
     {
         case INST_TRIANGLE:
-            return 0.5f * (fast_fabs(4.f * t - 2.0f) - 1.0f);
+            // Optimized triangle wave using fast math
+            return fast_div2(fast_fabs(fast_mul4(t) - 2.0f) - 1.0f);
         case INST_TILTED_SAW:
         {
             static float const a = 0.9f;
-            ret = t < a ? 2.f * t / a - 1.f
-                        : 2.f * (1.f - t) / (1.f - a) - 1.f;
-            return ret * 0.5f;
+            static float const inv_a = 1.111111f; // 1/0.9
+            static float const inv_1_minus_a = 10.0f; // 1/(1-0.9)
+            ret = t < a ? fast_mul2(t) * inv_a - 1.0f
+                        : fast_mul2(1.0f - t) * inv_1_minus_a - 1.0f;
+            return fast_div2(ret);
         }
         case INST_SAW:
-            return 0.653f * (t < 0.5f ? t : t - 1.f);
+            return 0.653f * (t < 0.5f ? t : t - 1.0f);
         case INST_SQUARE:
             return t < 0.5f ? 0.25f : -0.25f;
         case INST_PULSE:
-            return t < 1.f / 3 ? 0.25f : -0.25f;
+            return t < 0.33333333f ? 0.25f : -0.25f;
         case INST_ORGAN:
-            ret = t < 0.5f ? 3.f - fast_fabs(24.f * t - 6.f)
-                           : 1.f - fast_fabs(16.f * t - 12.f);
-            return ret / 9.f;
+            ret = t < 0.5f ? 3.0f - fast_fabs(24.0f * t - 6.0f)
+                           : 1.0f - fast_fabs(16.0f * t - 12.0f);
+            return fast_div9(ret);
         case INST_NOISE:
         {
             // Spectral analysis indicates this is some kind of brown noise,
@@ -108,7 +111,8 @@ float synth::waveform(int instrument, float advance)
             sample = (lsample + scale * (((float)rand() / (float)RAND_MAX) * 2.0f - 1.0f)) / (1.0f + scale);
             //printf("sample: %f\n", sample);
             lastadvance = advance;
-            float endval = std::min(std::max((lsample + sample) * 4.0f / 3.0f * (1.75f - scale), -1.0f), 1.0f) * 0.2f;
+            float temp_val = (lsample + sample) * 1.33333333f * (1.75f - scale);
+            float endval = std::min(std::max(temp_val, -1.0f), 1.0f) * 0.2f;
             //printf("endval: %f\n", endval);
             return endval;
         }
@@ -116,10 +120,10 @@ float synth::waveform(int instrument, float advance)
         {   // This one has a subfrequency of freq/128 that appears
             // to modulate two signals using a triangle wave
             // FIXME: amplitude seems to be affected, too
-            float k = fast_fabs(2.f * fast_fmod(advance / 128.f, 1.f) - 1.f);
-            float u = fast_fmod(t + 0.5f * k, 1.0f);
-            ret = fast_fabs(4.f * u - 2.f) - fast_fabs(8.f * t - 4.f);
-            return ret / 6.f;
+            float k = fast_fabs(fast_mul2(fast_fmod(advance * 0.0078125f, 1.0f)) - 1.0f); // 1/128 = 0.0078125
+            float u = fast_fmod(t + fast_div2(k), 1.0f);
+            ret = fast_fabs(fast_mul4(u) - 2.0f) - fast_fabs(8.0f * t - 4.0f);
+            return fast_div6(ret);
         }
     }
 
