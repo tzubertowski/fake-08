@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <array>
+#include <chrono>
 
 #include "libretro.h"
 #include "libretro_core_options.h"
@@ -38,6 +39,7 @@ int16_t audioBuffer[audioBufferSize];
 
 const int PicoScreenWidth = 128;
 const int PicoScreenHeight = 128;
+const int BytesPerPixel = 2;
 
 static int scale = 1;
 static int crop_h_left = 0;
@@ -61,6 +63,333 @@ Host* _host;
 bool audio_enabled = true;
 double prev_frame_time = 0;
 double frame_time = 0;
+int splash_frame_counter = 0;
+bool splash_screen_active = true;
+
+// Simple 5x7 bitmap font for splash text
+uint8_t font_data[256][7] = {0}; // Initialize all to 0
+
+void initSplashFont() {
+    // A
+    font_data['A'][0] = 0b01110;
+    font_data['A'][1] = 0b10001;
+    font_data['A'][2] = 0b10001;
+    font_data['A'][3] = 0b11111;
+    font_data['A'][4] = 0b10001;
+    font_data['A'][5] = 0b10001;
+    font_data['A'][6] = 0b10001;
+    
+    // B
+    font_data['B'][0] = 0b11110;
+    font_data['B'][1] = 0b10001;
+    font_data['B'][2] = 0b10001;
+    font_data['B'][3] = 0b11110;
+    font_data['B'][4] = 0b10001;
+    font_data['B'][5] = 0b10001;
+    font_data['B'][6] = 0b11110;
+    
+    // C
+    font_data['C'][0] = 0b01110;
+    font_data['C'][1] = 0b10001;
+    font_data['C'][2] = 0b10000;
+    font_data['C'][3] = 0b10000;
+    font_data['C'][4] = 0b10000;
+    font_data['C'][5] = 0b10001;
+    font_data['C'][6] = 0b01110;
+    
+    // D
+    font_data['D'][0] = 0b11110;
+    font_data['D'][1] = 0b10001;
+    font_data['D'][2] = 0b10001;
+    font_data['D'][3] = 0b10001;
+    font_data['D'][4] = 0b10001;
+    font_data['D'][5] = 0b10001;
+    font_data['D'][6] = 0b11110;
+    
+    // E
+    font_data['E'][0] = 0b11111;
+    font_data['E'][1] = 0b10000;
+    font_data['E'][2] = 0b10000;
+    font_data['E'][3] = 0b11110;
+    font_data['E'][4] = 0b10000;
+    font_data['E'][5] = 0b10000;
+    font_data['E'][6] = 0b11111;
+    
+    // F
+    font_data['F'][0] = 0b11111;
+    font_data['F'][1] = 0b10000;
+    font_data['F'][2] = 0b10000;
+    font_data['F'][3] = 0b11110;
+    font_data['F'][4] = 0b10000;
+    font_data['F'][5] = 0b10000;
+    font_data['F'][6] = 0b10000;
+    
+    // G
+    font_data['G'][0] = 0b01110;
+    font_data['G'][1] = 0b10001;
+    font_data['G'][2] = 0b10000;
+    font_data['G'][3] = 0b10011;
+    font_data['G'][4] = 0b10001;
+    font_data['G'][5] = 0b10001;
+    font_data['G'][6] = 0b01110;
+    
+    // H
+    font_data['H'][0] = 0b10001;
+    font_data['H'][1] = 0b10001;
+    font_data['H'][2] = 0b10001;
+    font_data['H'][3] = 0b11111;
+    font_data['H'][4] = 0b10001;
+    font_data['H'][5] = 0b10001;
+    font_data['H'][6] = 0b10001;
+    
+    // I
+    font_data['I'][0] = 0b01110;
+    font_data['I'][1] = 0b00100;
+    font_data['I'][2] = 0b00100;
+    font_data['I'][3] = 0b00100;
+    font_data['I'][4] = 0b00100;
+    font_data['I'][5] = 0b00100;
+    font_data['I'][6] = 0b01110;
+    
+    // K
+    font_data['K'][0] = 0b10001;
+    font_data['K'][1] = 0b10010;
+    font_data['K'][2] = 0b10100;
+    font_data['K'][3] = 0b11000;
+    font_data['K'][4] = 0b10100;
+    font_data['K'][5] = 0b10010;
+    font_data['K'][6] = 0b10001;
+    
+    // L
+    font_data['L'][0] = 0b10000;
+    font_data['L'][1] = 0b10000;
+    font_data['L'][2] = 0b10000;
+    font_data['L'][3] = 0b10000;
+    font_data['L'][4] = 0b10000;
+    font_data['L'][5] = 0b10000;
+    font_data['L'][6] = 0b11111;
+    
+    // M
+    font_data['M'][0] = 0b10001;
+    font_data['M'][1] = 0b11011;
+    font_data['M'][2] = 0b10101;
+    font_data['M'][3] = 0b10101;
+    font_data['M'][4] = 0b10001;
+    font_data['M'][5] = 0b10001;
+    font_data['M'][6] = 0b10001;
+    
+    // N
+    font_data['N'][0] = 0b10001;
+    font_data['N'][1] = 0b11001;
+    font_data['N'][2] = 0b10101;
+    font_data['N'][3] = 0b10101;
+    font_data['N'][4] = 0b10101;
+    font_data['N'][5] = 0b10011;
+    font_data['N'][6] = 0b10001;
+    
+    // O
+    font_data['O'][0] = 0b01110;
+    font_data['O'][1] = 0b10001;
+    font_data['O'][2] = 0b10001;
+    font_data['O'][3] = 0b10001;
+    font_data['O'][4] = 0b10001;
+    font_data['O'][5] = 0b10001;
+    font_data['O'][6] = 0b01110;
+    
+    // P
+    font_data['P'][0] = 0b11110;
+    font_data['P'][1] = 0b10001;
+    font_data['P'][2] = 0b10001;
+    font_data['P'][3] = 0b11110;
+    font_data['P'][4] = 0b10000;
+    font_data['P'][5] = 0b10000;
+    font_data['P'][6] = 0b10000;
+    
+    // R
+    font_data['R'][0] = 0b11110;
+    font_data['R'][1] = 0b10001;
+    font_data['R'][2] = 0b10001;
+    font_data['R'][3] = 0b11110;
+    font_data['R'][4] = 0b10100;
+    font_data['R'][5] = 0b10010;
+    font_data['R'][6] = 0b10001;
+    
+    // S
+    font_data['S'][0] = 0b01110;
+    font_data['S'][1] = 0b10001;
+    font_data['S'][2] = 0b10000;
+    font_data['S'][3] = 0b01110;
+    font_data['S'][4] = 0b00001;
+    font_data['S'][5] = 0b10001;
+    font_data['S'][6] = 0b01110;
+    
+    // T
+    font_data['T'][0] = 0b11111;
+    font_data['T'][1] = 0b00100;
+    font_data['T'][2] = 0b00100;
+    font_data['T'][3] = 0b00100;
+    font_data['T'][4] = 0b00100;
+    font_data['T'][5] = 0b00100;
+    font_data['T'][6] = 0b00100;
+    
+    // V
+    font_data['V'][0] = 0b10001;
+    font_data['V'][1] = 0b10001;
+    font_data['V'][2] = 0b10001;
+    font_data['V'][3] = 0b10001;
+    font_data['V'][4] = 0b10001;
+    font_data['V'][5] = 0b01010;
+    font_data['V'][6] = 0b00100;
+    
+    // Y
+    font_data['Y'][0] = 0b10001;
+    font_data['Y'][1] = 0b10001;
+    font_data['Y'][2] = 0b01010;
+    font_data['Y'][3] = 0b00100;
+    font_data['Y'][4] = 0b00100;
+    font_data['Y'][5] = 0b00100;
+    font_data['Y'][6] = 0b00100;
+    
+    // 0
+    font_data['0'][0] = 0b01110;
+    font_data['0'][1] = 0b10001;
+    font_data['0'][2] = 0b10011;
+    font_data['0'][3] = 0b10101;
+    font_data['0'][4] = 0b11001;
+    font_data['0'][5] = 0b10001;
+    font_data['0'][6] = 0b01110;
+    
+    // 8
+    font_data['8'][0] = 0b01110;
+    font_data['8'][1] = 0b10001;
+    font_data['8'][2] = 0b10001;
+    font_data['8'][3] = 0b01110;
+    font_data['8'][4] = 0b10001;
+    font_data['8'][5] = 0b10001;
+    font_data['8'][6] = 0b01110;
+    
+    // Space
+    font_data[' '][0] = 0b00000;
+    font_data[' '][1] = 0b00000;
+    font_data[' '][2] = 0b00000;
+    font_data[' '][3] = 0b00000;
+    font_data[' '][4] = 0b00000;
+    font_data[' '][5] = 0b00000;
+    font_data[' '][6] = 0b00000;
+    
+    // Period
+    font_data['.'][0] = 0b00000;
+    font_data['.'][1] = 0b00000;
+    font_data['.'][2] = 0b00000;
+    font_data['.'][3] = 0b00000;
+    font_data['.'][4] = 0b00000;
+    font_data['.'][5] = 0b00000;
+    font_data['.'][6] = 0b00100;
+    
+    // @ symbol
+    font_data['@'][0] = 0b01110;
+    font_data['@'][1] = 0b10001;
+    font_data['@'][2] = 0b10111;
+    font_data['@'][3] = 0b10101;
+    font_data['@'][4] = 0b10111;
+    font_data['@'][5] = 0b10000;
+    font_data['@'][6] = 0b01110;
+}
+
+void drawChar(uint16_t* buffer, int bufferWidth, int x, int y, char c, uint16_t color, int scale) {
+    for (int row = 0; row < 7; row++) {
+        uint8_t rowData = font_data[(unsigned char)c][row];
+        for (int col = 0; col < 5; col++) {
+            if (rowData & (1 << (4 - col))) {
+                for (int sy = 0; sy < scale; sy++) {
+                    for (int sx = 0; sx < scale; sx++) {
+                        int px = x + col * scale + sx;
+                        int py = y + row * scale + sy;
+                        if (px >= 0 && px < bufferWidth && py >= 0 && py < 128) {
+                            buffer[py * bufferWidth + px] = color;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+void drawText(uint16_t* buffer, int bufferWidth, int x, int y, const char* text, uint16_t color, int scale) {
+    int currentX = x;
+    for (const char* p = text; *p; p++) {
+        drawChar(buffer, bufferWidth, currentX, y, *p, color, scale);
+        currentX += 6 * scale; // 5 pixels + 1 space
+    }
+}
+
+void showLibretroSplashScreen() {
+    if (log_cb) {
+        log_cb(RETRO_LOG_INFO, "SPLASH: Starting libretro splash screen\n");
+    }
+    
+    // Fill entire screen with a solid color (15 = peach)
+    for (size_t i = 0; i < screenBufferSize; i++) {
+        screenBuffer[i] = _rgb565Colors[15]; // Direct peach color
+    }
+    
+    // Draw white text rectangles
+    // Line 1: "FAKE08 DASH V." - position around row 50
+    for (int y = 50; y < 58; y++) {
+        for (int x = 30; x < 98; x++) {
+            if (y >= 0 && y < 128 && x >= 0 && x < 128) {
+                int idx = y * 128 + x;
+                screenBuffer[idx] = _rgb565Colors[7]; // White
+            }
+        }
+    }
+    
+    // Line 2: "MODDED BY PROSTY" - position around row 65
+    for (int y = 65; y < 73; y++) {
+        for (int x = 25; x < 103; x++) {
+            if (y >= 0 && y < 128 && x >= 0 && x < 128) {
+                int idx = y * 128 + x;
+                screenBuffer[idx] = _rgb565Colors[7]; // White
+            }
+        }
+    }
+    
+    // Line 3: "COMPILED FOR RH @ DC" - position around row 80
+    for (int y = 80; y < 88; y++) {
+        for (int x = 15; x < 113; x++) {
+            if (y >= 0 && y < 128 && x >= 0 && x < 128) {
+                int idx = y * 128 + x;
+                screenBuffer[idx] = _rgb565Colors[7]; // White
+            }
+        }
+    }
+    
+    if (log_cb) {
+        log_cb(RETRO_LOG_INFO, "SPLASH: Screen buffer prepared, starting 6-second display\n");
+    }
+    
+    // Display the splash screen for 6 seconds by calling video callback
+    auto startTime = std::chrono::steady_clock::now();
+    auto endTime = startTime + std::chrono::seconds(6);
+    int frameCount = 0;
+    while (std::chrono::steady_clock::now() < endTime) {
+        // Display the splash frame via libretro video callback
+        if (video_cb) {
+            video_cb(screenBuffer, PicoScreenWidth, PicoScreenHeight, PicoScreenWidth * BytesPerPixel);
+        }
+        frameCount++;
+        
+        // Sleep a bit to avoid maxing out CPU
+        auto frameStart = std::chrono::steady_clock::now();
+        while (std::chrono::steady_clock::now() - frameStart < std::chrono::milliseconds(33)) {
+            // ~30fps timing
+        }
+    }
+    
+    if (log_cb) {
+        log_cb(RETRO_LOG_INFO, "SPLASH: Splash screen completed after %d frames\n", frameCount);
+    }
+}
 
 static void frame_time_cb(retro_usec_t usec)
 {
@@ -182,6 +511,7 @@ EXPORT void retro_init()
 	{
 		log_cb = log.log;
         log_cb(RETRO_LOG_INFO, "Retro init  called. setting up fake-08 host\n");
+        log_cb(RETRO_LOG_INFO, "SPLASH: Modified libretro core is running!\n");
 	}
 	else
 	{
@@ -400,7 +730,10 @@ EXPORT void retro_run()
         
         setInputState(currKDown, currKHeld, picoMouseX, picoMouseY, mouseBtnState);
 
-        _vm->UpdateAndDraw();
+        // Only update VM if splash screen is not active
+        if (!splash_screen_active) {
+            _vm->UpdateAndDraw();
+        }
         kHeld = currKHeld;
         kDown = currKDown;
 
@@ -507,6 +840,30 @@ EXPORT void retro_run()
             }
         }
 
+        // Check for splash screen override
+        if (splash_screen_active && splash_frame_counter < 90) {
+            // Fill entire buffer with splash screen
+            for (size_t i = 0; i < width * scale * height * scale; i++) {
+                screenBuffer2x[i] = _rgb565Colors[15]; // Peach background
+            }
+            
+            // Draw actual text using bitmap font
+            drawText(screenBuffer2x, width * scale, 20 * scale, 45 * scale, "FAKE08 DASH V.", _rgb565Colors[7], scale);
+            drawText(screenBuffer2x, width * scale, 15 * scale, 60 * scale, "MODDED BY PROSTY", _rgb565Colors[7], scale);
+            drawText(screenBuffer2x, width * scale, 8 * scale, 75 * scale, "COMPILED FOR RH @ DC", _rgb565Colors[7], scale);
+            
+            splash_frame_counter++;
+            if (splash_frame_counter == 1 && log_cb) {
+                log_cb(RETRO_LOG_INFO, "SPLASH: Displaying splash screen via retro_run\n");
+            }
+            if (splash_frame_counter >= 90) {
+                splash_screen_active = false;
+                if (log_cb) {
+                    log_cb(RETRO_LOG_INFO, "SPLASH: Splash screen finished after 90 frames\n");
+                }
+            }
+        }
+        
         video_cb(&screenBuffer2x, width * scale, height * scale, pitch * scale);
     }
     else {
@@ -520,6 +877,30 @@ EXPORT void retro_run()
                 uint8_t bothPix = picoFb[pixelIdx];
                 uint8_t pixel = (picox & 1) == 0 ? (bothPix & 0x0f) : (bothPix >> 4);
                 screenBuffer[scry*width+scrx] = _rgb565Colors[screenPaletteMap[pixel]];
+            }
+        }
+
+        // Check for splash screen override (1x buffer)
+        if (splash_screen_active && splash_frame_counter < 90) {
+            // Fill entire buffer with splash screen
+            for (size_t i = 0; i < screenBufferSize; i++) {
+                screenBuffer[i] = _rgb565Colors[15]; // Peach background
+            }
+            
+            // Draw actual text using bitmap font
+            drawText(screenBuffer, 128, 20, 45, "FAKE08 DASH V.", _rgb565Colors[7], 1);
+            drawText(screenBuffer, 128, 15, 60, "MODDED BY PROSTY", _rgb565Colors[7], 1);
+            drawText(screenBuffer, 128, 8, 75, "COMPILED FOR RH @ DC", _rgb565Colors[7], 1);
+            
+            splash_frame_counter++;
+            if (splash_frame_counter == 1 && log_cb) {
+                log_cb(RETRO_LOG_INFO, "SPLASH: Displaying splash screen via retro_run\n");
+            }
+            if (splash_frame_counter >= 90) {
+                splash_screen_active = false;
+                if (log_cb) {
+                    log_cb(RETRO_LOG_INFO, "SPLASH: Splash screen finished after 90 frames\n");
+                }
             }
         }
 
@@ -767,6 +1148,14 @@ EXPORT void retro_cheat_set(unsigned index, bool enabled, const char *code)
 EXPORT bool retro_load_game(struct retro_game_info const *info)
 {
     check_variables(true);
+
+    // Initialize splash screen
+    splash_frame_counter = 0;
+    splash_screen_active = true;
+    initSplashFont();
+    if (log_cb) {
+        log_cb(RETRO_LOG_INFO, "SPLASH: Splash screen activated for first 90 frames (3 seconds)\n");
+    }
 
     if (!info) {
         _vm->QueueCartChange("__FAKE08-BIOS.p8");
