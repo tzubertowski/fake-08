@@ -476,7 +476,16 @@ float Audio::getSampleForNote(noteChannel &channel, rawSfxChannel &parentChannel
     int const fx = channel.n.getEffect();
     uint8_t key = channel.n.getKey();
     float volume = fast_div7(channel.n.getVolume());
-    float freq = key_to_freq(key);
+    
+    // Cache frequency calculation - only recalculate when key changes
+    static uint8_t cached_key = 255; // Invalid initial value
+    static float cached_freq = 440.0f;
+    float freq;
+    if (key != cached_key) {
+        cached_key = key;
+        cached_freq = key_to_freq(key);
+    }
+    freq = cached_freq;
 
     struct sfx const &sfx = _memory->sfx[parentChannel.sfxId];
 
